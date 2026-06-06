@@ -13,6 +13,9 @@ from .const import DEFAULT_BAUDRATE
 
 _LOGGER = logging.getLogger(__name__)
 
+_PACKET_HEADER = 0xF7
+_PACKET_TAIL = 0xEE
+
 
 class SerialClient:
     """Serial client for Imazu Wall Pad communication."""
@@ -78,26 +81,25 @@ class SerialClient:
                 buffer.extend(data)
 
                 # Process complete packets from buffer
-                while len(buffer) >= 7:
+                # Packet format: 0xF7 ... 0xEE (header to tail)
+                while True:
                     # Find packet start (0xF7)
-                    start_idx = buffer.find(0xF7)
+                    start_idx = buffer.find(_PACKET_HEADER)
                     if start_idx == -1:
                         buffer.clear()
                         break
                     if start_idx > 0:
                         buffer = buffer[start_idx:]
 
-                    # Check if we have enough data for length byte
-                    if len(buffer) < 2:
+                    # Find packet end (0xEE) after the header
+                    end_idx = buffer.find(_PACKET_TAIL, 1)
+                    if end_idx == -1:
+                        # No complete packet yet, wait for more data
                         break
 
-                    packet_len = buffer[1]
-                    if len(buffer) < packet_len:
-                        break
-
-                    # Extract packet
-                    packet_data = bytes(buffer[:packet_len])
-                    buffer = buffer[packet_len:]
+                    # Extract complete packet (including header and tail)
+                    packet_data = bytes(buffer[: end_idx + 1])
+                    buffer = buffer[end_idx + 1 :]
 
                     # Parse and handle packet
                     try:
