@@ -6,15 +6,15 @@
         "description": "[%key:common::config_flow::description::confirm_setup%]"
       },
       "user": {
-        "description": "Please enter the host and port.",
+        "description": "Please enter the serial device path.",
         "data": {
-          "host": "Host : Socket IP(192.168.x.x).",
-          "port": "Port : Port. (default:8899)"
+          "device": "Device Path (e.g., /dev/ttyUSB0)"
         }
       }
     },
     "abort": {
-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
+      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]",
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"

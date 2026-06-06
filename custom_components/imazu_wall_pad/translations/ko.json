@@ -6,15 +6,15 @@
         "description": "설정을 시작하시겠습니까?"
       },
       "user": {
-        "description": "호스트 IP와 포트를 입력해주세요.",
+        "description": "시리얼 장치 경로를 입력해주세요.",
         "data": {
-          "host": "Host : Socket IP(192.168.x.x).",
-          "port": "Port : Port. (default:8899)"
+          "device": "장치 경로 (예: /dev/ttyUSB0)"
         }
       }
     },
     "abort": {
-      "single_instance_allowed": "이미 구성되었습니다. 하나의 인스턴스만 구성할 수 있습니다."
+      "single_instance_allowed": "이미 구성되었습니다. 하나의 인스턴스만 구성할 수 있습니다.",
+      "already_configured": "장치가 이미 구성되어 있습니다"
     },
     "error": {
       "cannot_connect": "연결하지 못했습니다.",

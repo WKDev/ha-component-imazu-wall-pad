@@ -10,6 +10,14 @@ SW_VERSION = "1.0"
 
 DEFAULT_PORT = 8899
 
+# Connection type constants
+CONF_CONNECTION_TYPE = "connection_type"
+CONF_DEVICE = "device"
+CONNECTION_TCP = "tcp"
+CONNECTION_SERIAL = "serial"
+DEFAULT_DEVICE = "/dev/ttyUSB0"
+DEFAULT_BAUDRATE = 9600
+
 PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.LIGHT,

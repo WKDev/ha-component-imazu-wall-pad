@@ -10,10 +10,10 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
 from . import ImazuGateway, ImazuWallPadConfigEntry
 from .const import BRAND_NAME
 from .gateway import EntityData
-from .helper import host_to_last
 from .wall_pad import WallPadDevice
 
 
@@ -62,10 +62,11 @@ class WPAwayLight(WallPadDevice[AwayPacket], BinarySensorEntity):
         super().__init__(gateway, platform, packet)
 
         self._attr_should_poll = False
+        connection_id = self.gateway.connection_id
 
         self.entity_id = (
             f"{str(platform.value)}."
-            f"{BRAND_NAME}_{host_to_last(self.gateway.host)}_"
+            f"{BRAND_NAME}_{connection_id}_"
             f"{self.packet.name.lower()}_light_{packet.room_id}"
         )
         self._attr_name = f"{BRAND_NAME} {packet.name} Light {packet.room_id}".title()
@@ -96,10 +97,11 @@ class WPAwayGasValve(WallPadDevice[AwayPacket], BinarySensorEntity):
         super().__init__(gateway, platform, packet)
 
         self._attr_should_poll = False
+        connection_id = self.gateway.connection_id
 
         self.entity_id = (
             f"{str(platform.value)}."
-            f"{BRAND_NAME}_{host_to_last(self.gateway.host)}_"
+            f"{BRAND_NAME}_{connection_id}_"
             f"{self.packet.name.lower()}_gas_{packet.room_id}"
         )
         self._attr_name = f"{BRAND_NAME} {packet.name} Gas {packet.room_id}".title()

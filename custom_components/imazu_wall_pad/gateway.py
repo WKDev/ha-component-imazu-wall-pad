@@ -6,7 +6,6 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 
-from wp_imazu.client import ImazuClient
 from wp_imazu.packet import (
     AwayPacket,
     GasPacket,
@@ -25,7 +24,17 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er, restore_state
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity import Entity
-from .const import DOMAIN, PACKET
+
+from .const import (
+    CONF_CONNECTION_TYPE,
+    CONF_DEVICE,
+    CONNECTION_SERIAL,
+    DEFAULT_BAUDRATE,
+    DEFAULT_PORT,
+    DOMAIN,
+    PACKET,
+)
+from .helper import connection_to_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,14 +80,44 @@ class ImazuGateway:
         self._platforms: dict[Platform, PlatformData] = defaultdict(
             lambda: PlatformData({})
         )
-        self.host: str = self._entry.data[CONF_HOST]
-        self.port: int = self._entry.data[CONF_PORT]
-        self._client = ImazuClient(self.host, self.port)
+
+        # Determine connection type and create appropriate client
+        self._connection_type = entry.data.get(CONF_CONNECTION_TYPE, CONNECTION_SERIAL)
+
+        if self._connection_type == CONNECTION_SERIAL:
+            self.device: str = entry.data[CONF_DEVICE]
+            self.host: str | None = None
+            self.port: int | None = None
+            self._connection_id = connection_to_id(
+                self._connection_type, None, self.device
+            )
+
+            from .serial_client import SerialClient
+
+            self._client = SerialClient(self.device, DEFAULT_BAUDRATE)
+        else:
+            # TCP connection (legacy support)
+            self.host = entry.data[CONF_HOST]
+            self.port = entry.data.get(CONF_PORT, DEFAULT_PORT)
+            self.device = None
+            self._connection_id = connection_to_id(
+                self._connection_type, self.host, None
+            )
+
+            from wp_imazu.client import ImazuClient
+
+            self._client = ImazuClient(self.host, self.port)
+
         self._client.async_packet_handler = self._async_packet_handler
+
+    @property
+    def connection_id(self) -> str:
+        """Return the connection identifier."""
+        return self._connection_id
 
     def entity_add_signal(self, platform: Platform) -> str:
         """Return a signal for the dispatch of a device update."""
-        return f"{DOMAIN}_{self.host}_{str(platform.value)}"
+        return f"{DOMAIN}_{self._connection_id}_{str(platform.value)}"
 
     async def _async_get_entity_last_packet(self, entity_id: str) -> list[ImazuPacket]:
         """Get packet data stored for an entity, if any."""
@@ -126,7 +165,9 @@ class ImazuGateway:
 
             if entity_data.device:
                 async_dispatcher_send(
-                    self._hass, f"{DOMAIN}_{self.host}_{packet.device_id}", packet
+                    self._hass,
+                    f"{DOMAIN}_{self._connection_id}_{packet.device_id}",
+                    packet,
                 )
             else:
                 async_dispatcher_send(

@@ -12,6 +12,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.restore_state import RestoredExtraData, RestoreEntity
 from homeassistant.util import Throttle
+
 from . import ImazuGateway
 from .const import (
     ATTR_DEVICE,
@@ -24,7 +25,6 @@ from .const import (
     PACKET,
     SW_VERSION,
 )
-from .helper import host_to_last
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,13 +42,14 @@ class WallPadDevice(Generic[T], RestoreEntity):
         """Initialize the instance."""
         self.gateway = gateway
         self.packet = packet
+        connection_id = self.gateway.connection_id
         self.entity_id = (
             f"{str(platform.value)}."
-            f"{BRAND_NAME}_{host_to_last(self.gateway.host)}_"
+            f"{BRAND_NAME}_{connection_id}_"
             f"{self.packet.name.lower()}_{packet.room_id}_{packet.sub_id}"
         )
         self._attr_unique_id = (
-            f"{BRAND_NAME}_{host_to_last(self.gateway.host)}_{self.packet.device_id}"
+            f"{BRAND_NAME}_{connection_id}_{self.packet.device_id}"
         )
         self._attr_name = (
             f"{BRAND_NAME} {packet.name} {packet.room_id}-{packet.sub_id}".title()
@@ -59,7 +60,7 @@ class WallPadDevice(Generic[T], RestoreEntity):
             model=MODEL,
             name=f"{BRAND_NAME} {packet.name} {packet.room_id}".title(),
             sw_version=SW_VERSION,
-            via_device=(DOMAIN, self.gateway.host),
+            via_device=(DOMAIN, connection_id),
         )
         self._attr_extra_state_attributes = {
             ATTR_DEVICE: self.packet.device.name,
@@ -90,7 +91,7 @@ class WallPadDevice(Generic[T], RestoreEntity):
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
-                f"{DOMAIN}_{self.gateway.host}_{self.packet.device_id}",
+                f"{DOMAIN}_{self.gateway.connection_id}_{self.packet.device_id}",
                 async_update_packet,
             )
         )
