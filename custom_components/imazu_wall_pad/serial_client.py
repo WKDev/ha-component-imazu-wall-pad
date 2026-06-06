@@ -13,8 +13,29 @@ from .const import DEFAULT_BAUDRATE
 
 _LOGGER = logging.getLogger(__name__)
 
-_PACKET_HEADER = 0xF7
-_PACKET_TAIL = 0xEE
+_PACKET_HEADER = b"\xf7"
+_PACKET_TAIL = b"\xee"
+_PACKET_HEADER_BYTE = 0xF7
+_PACKET_TAIL_BYTE = 0xEE
+
+
+def _make_packet(data: bytes) -> bytes:
+    """Create a packet with header, length, checksum, and tail."""
+    # Packet structure: [0xF7] [length] [data] [checksum] [0xEE]
+    # Length = header(1) + length(1) + data(n) + checksum(1) + tail(1)
+    length = 1 + 1 + len(data) + 1 + 1
+    packet = bytearray(_PACKET_HEADER)
+    packet.append(length)
+    packet.extend(data)
+
+    # Calculate checksum (XOR of all bytes except checksum and tail)
+    checksum = 0
+    for b in packet:
+        checksum ^= b
+    packet.append(checksum)
+    packet.extend(_PACKET_TAIL)
+
+    return bytes(packet)
 
 
 class SerialClient:
@@ -84,7 +105,7 @@ class SerialClient:
                 # Packet format: 0xF7 ... 0xEE (header to tail)
                 while True:
                     # Find packet start (0xF7)
-                    start_idx = buffer.find(_PACKET_HEADER)
+                    start_idx = buffer.find(_PACKET_HEADER_BYTE)
                     if start_idx == -1:
                         buffer.clear()
                         break
@@ -92,7 +113,7 @@ class SerialClient:
                         buffer = buffer[start_idx:]
 
                     # Find packet end (0xEE) after the header
-                    end_idx = buffer.find(_PACKET_TAIL, 1)
+                    end_idx = buffer.find(_PACKET_TAIL_BYTE, 1)
                     if end_idx == -1:
                         # No complete packet yet, wait for more data
                         break
@@ -116,16 +137,18 @@ class SerialClient:
                 _LOGGER.error("Error reading from serial port: %s", e)
                 await asyncio.sleep(1)
 
-    async def async_send(self, packet: bytes) -> None:
-        """Send a packet to the serial port."""
+    async def async_send(self, data: bytes) -> None:
+        """Send a packet to the serial port with proper framing."""
         if not self._connected or not self._writer:
             _LOGGER.warning("Cannot send: not connected")
             return
 
+        packet = _make_packet(data)
         async with self._send_lock:
             try:
                 self._writer.write(packet)
                 await self._writer.drain()
+                _LOGGER.debug("Sent packet: %s", packet.hex())
                 # Half-duplex delay
                 await asyncio.sleep(0.05)
             except Exception as e:
