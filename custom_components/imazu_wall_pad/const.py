@@ -24,6 +24,7 @@ PLATFORMS = [
     Platform.SWITCH,
     Platform.FAN,
     Platform.CLIMATE,
+    Platform.BUTTON,
 ]
 PACKET = "packet"
 
