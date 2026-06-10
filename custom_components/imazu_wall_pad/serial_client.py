@@ -20,6 +20,39 @@ _PACKET_TAIL_BYTE = 0xEE
 # startup SCAN burst) don't run into each other on the bus.
 _POST_SEND_DELAY = 0.05
 
+_DEV_THERMOSTAT = 0x18
+_CMD_STATUS = 0x04
+# This wallpad reports each heating zone as an 8-byte record
+# [mode, temp, target, 00, 00, 00, 00, 00]; absent zones read [00, ff, ff, …].
+_THERMO_RECORD = 8
+_THERMO_MODES = (0x01, 0x04, 0x07)  # heat / off / away
+
+
+def _normalize_thermostat(raw: bytes) -> bytes:
+    """Rewrite this wallpad's padded thermostat STATUS into wp_imazu's form.
+
+    wp_imazu only understands 3-byte ``[mode, temp, target]`` zone records, but
+    this wallpad pads each zone to 8 bytes and includes empty zones. Trim the
+    padding, drop empty zones, and re-frame so the library parses (and expands
+    the aggregate into one ThermostatPacket per zone). Any other frame — or one
+    already in 3-byte form — is returned unchanged.
+    """
+    # raw: f7 len 01 18 04 46 <sub> <change> <state…> cs ee
+    if len(raw) < 11 or raw[3] != _DEV_THERMOSTAT or raw[4] != _CMD_STATUS:
+        return raw
+    state = raw[8:-2]
+    if not state or len(state) % _THERMO_RECORD != 0:
+        return raw  # not the padded layout (e.g. a standard 3-byte report)
+
+    zones = bytearray()
+    for i in range(0, len(state), _THERMO_RECORD):
+        record = state[i : i + _THERMO_RECORD]
+        if record[0] in _THERMO_MODES:  # real zone; skip empty (00/ff ff) ones
+            zones += record[:3]
+    if not zones:
+        return raw
+    return _make_packet(bytes(raw[2:8]) + bytes(zones))
+
 
 def _make_packet(data: bytes) -> bytes:
     """Create a packet with header, length, checksum, and tail."""
@@ -168,9 +201,10 @@ class SerialClient:
                     packet_data = bytes(buffer[: end_idx + 1])
                     buffer = buffer[end_idx + 1 :]
 
-                    # Parse and handle packet
+                    # Parse and handle packet (normalising this wallpad's padded
+                    # thermostat frames into the form wp_imazu understands).
                     try:
-                        packets = parse_packet(packet_data.hex())
+                        packets = parse_packet(_normalize_thermostat(packet_data).hex())
                         for packet in packets:
                             if self.async_packet_handler:
                                 await self.async_packet_handler(packet)
