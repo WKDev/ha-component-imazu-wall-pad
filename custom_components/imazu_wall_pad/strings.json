@@ -2,10 +2,22 @@
   "title": "Imazu Wall Pad",
   "config": {
     "step": {
-      "confirm": {
-        "description": "[%key:common::config_flow::description::confirm_setup%]"
-      },
       "user": {
+        "title": "Imazu Wall Pad",
+        "description": "Choose how to connect to the wall pad.",
+        "menu_options": {
+          "tcp": "Network bridge (EW11 / TCP)",
+          "serial": "Local serial (USB-to-RS485)"
+        }
+      },
+      "tcp": {
+        "description": "Enter the EW11 (or other RS485-to-WiFi bridge) host and port.",
+        "data": {
+          "host": "Host (e.g., 192.168.0.99)",
+          "port": "Port (e.g., 8899)"
+        }
+      },
+      "serial": {
         "description": "Please enter the serial device path.",
         "data": {
           "device": "Device Path (e.g., /dev/ttyUSB0)"

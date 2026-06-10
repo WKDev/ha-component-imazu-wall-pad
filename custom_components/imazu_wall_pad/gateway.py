@@ -96,7 +96,8 @@ class ImazuGateway:
 
             self._client = SerialClient(self.device, DEFAULT_BAUDRATE)
         else:
-            # TCP connection (legacy support)
+            # TCP connection (e.g. EW11 RS485-to-WiFi bridge). Reuse SerialClient
+            # so the gap-aware send / ack / retry logic applies over TCP too.
             self.host = entry.data[CONF_HOST]
             self.port = entry.data.get(CONF_PORT, DEFAULT_PORT)
             self.device = None
@@ -104,9 +105,9 @@ class ImazuGateway:
                 self._connection_type, self.host, None
             )
 
-            from wp_imazu.client import ImazuClient
+            from .serial_client import SerialClient
 
-            self._client = ImazuClient(self.host, self.port)
+            self._client = SerialClient(f"tcp://{self.host}:{self.port}")
 
         self._client.async_packet_handler = self._async_packet_handler
 
