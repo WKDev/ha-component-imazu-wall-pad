@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from wp_imazu.packet import parse_packet
 
@@ -19,6 +20,21 @@ _PACKET_TAIL_BYTE = 0xEE
 # Half-duplex settle delay between writes so back-to-back frames (e.g. the
 # startup SCAN burst) don't run into each other on the bus.
 _POST_SEND_DELAY = 0.05
+
+# Gap-aware send: the RS485 bus is half-duplex, so transmitting while a device
+# is mid-reply clobbers that reply on the wire. Before writing we wait until BOTH:
+#   * at least _SEND_INTERVAL has passed since our previous write — so a burst of
+#     scans can't outrun the replies (a reply may not have *started* yet, which
+#     would otherwise look like a quiet bus), and
+#   * the bus has been quiet (no received bytes) for _BUS_QUIET — so we don't cut
+#     off a reply that is currently arriving.
+# The wait is capped at _SEND_MAX_WAIT so a continuously busy bus can't block
+# sending forever. This is what makes the startup discovery scan reliable: each
+# scan waits for the previous device's STATUS reply to finish before the next
+# scan goes out. On an idle, already-settled bus the wait is skipped.
+_SEND_INTERVAL = 0.3
+_BUS_QUIET = 0.2
+_SEND_MAX_WAIT = 2.0
 
 _DEV_THERMOSTAT = 0x18
 _CMD_STATUS = 0x04
@@ -119,6 +135,8 @@ class SerialClient:
         self._connected = False
         self._read_task: asyncio.Task | None = None
         self._send_lock = asyncio.Lock()
+        self._last_recv = 0.0
+        self._last_send = 0.0
         self.async_packet_handler = None
 
     @property
@@ -178,6 +196,7 @@ class SerialClient:
                     self._connected = False
                     break
 
+                self._last_recv = time.monotonic()
                 buffer.extend(data)
 
                 # Process complete packets from buffer.
@@ -200,6 +219,7 @@ class SerialClient:
                     # Extract complete packet (including header and tail)
                     packet_data = bytes(buffer[: end_idx + 1])
                     buffer = buffer[end_idx + 1 :]
+                    _LOGGER.debug("Recv frame: %s", packet_data.hex())
 
                     # Parse and handle packet (normalising this wallpad's padded
                     # thermostat frames into the form wp_imazu understands).
@@ -225,12 +245,25 @@ class SerialClient:
 
         packet = _make_packet(data)
         async with self._send_lock:
+            # Pace the write so we neither outrun a reply that hasn't started yet
+            # (_SEND_INTERVAL since our last write) nor cut off one mid-arrival
+            # (_BUS_QUIET of silence). Bounded so a busy bus can't hang us.
+            deadline = time.monotonic() + _SEND_MAX_WAIT
+            while time.monotonic() < deadline:
+                now = time.monotonic()
+                if (
+                    now - self._last_send >= _SEND_INTERVAL
+                    and now - self._last_recv >= _BUS_QUIET
+                ):
+                    break
+                await asyncio.sleep(0.02)
             try:
                 self._writer.write(packet)
                 await self._writer.drain()
             except Exception as e:  # noqa: BLE001
                 _LOGGER.error("Failed to send packet: %s", e)
                 return
+            self._last_send = time.monotonic()
             _LOGGER.debug("Sent packet: %s", packet.hex())
             # Brief half-duplex settle so consecutive sends don't collide.
             await asyncio.sleep(_POST_SEND_DELAY)
