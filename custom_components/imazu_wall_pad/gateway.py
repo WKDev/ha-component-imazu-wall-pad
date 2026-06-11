@@ -29,6 +29,7 @@ from .const import (
     CONF_CONNECTION_TYPE,
     CONF_DEVICE,
     CONNECTION_SERIAL,
+    CONNECTION_TCP,
     DEFAULT_BAUDRATE,
     DEFAULT_PORT,
     DOMAIN,
@@ -81,8 +82,14 @@ class ImazuGateway:
             lambda: PlatformData({})
         )
 
-        # Determine connection type and create appropriate client
-        self._connection_type = entry.data.get(CONF_CONNECTION_TYPE, CONNECTION_SERIAL)
+        # Determine connection type and create appropriate client. Entries created
+        # before CONF_CONNECTION_TYPE existed won't have it, so fall back to
+        # inferring from the stored data (a host means TCP, otherwise serial).
+        self._connection_type = entry.data.get(CONF_CONNECTION_TYPE)
+        if self._connection_type is None:
+            self._connection_type = (
+                CONNECTION_TCP if CONF_HOST in entry.data else CONNECTION_SERIAL
+            )
 
         if self._connection_type == CONNECTION_SERIAL:
             self.device: str = entry.data[CONF_DEVICE]
