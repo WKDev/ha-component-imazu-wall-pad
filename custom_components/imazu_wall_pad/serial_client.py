@@ -37,11 +37,16 @@ _BUS_QUIET = 0.2
 _SEND_MAX_WAIT = 2.0
 
 _DEV_THERMOSTAT = 0x18
+_DEV_OUTLET = 0x1F
 _CMD_STATUS = 0x04
 # This wallpad reports each heating zone as an 8-byte record
 # [mode, temp, target, 00, 00, 00, 00, 00]; absent zones read [00, ff, ff, …].
 _THERMO_RECORD = 8
 _THERMO_MODES = (0x01, 0x04, 0x07)  # heat / off / away
+# This wallpad reports each outlet as a 9-byte record
+# [id, power, <6 bytes metering/scaffold>, ordinal]; power 01=ON, 02=OFF.
+_OUTLET_RECORD = 9
+_OUTLET_POWER_OFFSET = 1
 
 
 def _normalize_thermostat(raw: bytes) -> bytes:
@@ -68,6 +73,30 @@ def _normalize_thermostat(raw: bytes) -> bytes:
     if not zones:
         return raw
     return _make_packet(bytes(raw[2:8]) + bytes(zones))
+
+
+def _normalize_outlet(raw: bytes) -> bytes:
+    """Rewrite this wallpad's padded outlet STATUS into wp_imazu's form.
+
+    wp_imazu expects the aggregate outlet STATUS to be a flat run of 1-byte power
+    values (01=ON, 02=OFF), one per outlet. This wallpad instead packs each outlet
+    into a 9-byte record ``[id, power, <6 metering bytes>, ordinal]``. Keep only
+    the power byte of each record and re-frame so the library parses (and expands
+    into one OutletPacket per outlet). Any other frame — or one already in the flat
+    form — is returned unchanged.
+    """
+    # raw: f7 len 01 1f 04 40 <sub> <change> <state…> cs ee
+    if len(raw) < 11 or raw[3] != _DEV_OUTLET or raw[4] != _CMD_STATUS:
+        return raw
+    change_value = raw[7]
+    state = raw[8:-2]
+    # Only the aggregate (change_value 00) uses the padded multi-record layout.
+    if change_value != 0x00 or not state or len(state) % _OUTLET_RECORD != 0:
+        return raw
+    powers = bytes(
+        state[i + _OUTLET_POWER_OFFSET] for i in range(0, len(state), _OUTLET_RECORD)
+    )
+    return _make_packet(bytes(raw[2:8]) + powers)
 
 
 def _make_packet(data: bytes) -> bytes:
@@ -222,9 +251,12 @@ class SerialClient:
                     _LOGGER.debug("Recv frame: %s", packet_data.hex())
 
                     # Parse and handle packet (normalising this wallpad's padded
-                    # thermostat frames into the form wp_imazu understands).
+                    # thermostat and outlet frames into the form wp_imazu understands).
                     try:
-                        packets = parse_packet(_normalize_thermostat(packet_data).hex())
+                        normalized = _normalize_outlet(
+                            _normalize_thermostat(packet_data)
+                        )
+                        packets = parse_packet(normalized.hex())
                         for packet in packets:
                             if self.async_packet_handler:
                                 await self.async_packet_handler(packet)
